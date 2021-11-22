@@ -175,7 +175,7 @@ def train(opt):
                 utils.set_lr(optimizer, opt.current_lr)
             # Load data from train split (0)
             data = loader.get_batch('train')
-            print('Read data:', time.time() - start)
+            #print('Read data:', time.time() - start)
 
             torch.cuda.synchronize()
             start = time.time()
@@ -200,15 +200,16 @@ def train(opt):
             train_loss = loss.item()
             torch.cuda.synchronize()
             end = time.time()
-            if struc_flag:
-                print("iter {} (epoch {}), train_loss = {:.3f}, lm_loss = {:.3f}, struc_loss = {:.3f}, time/batch = {:.3f}" \
-                    .format(iteration, epoch, train_loss, model_out['lm_loss'].mean().item(), model_out['struc_loss'].mean().item(), end - start))
-            elif not sc_flag:
-                print("iter {} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
-                    .format(iteration, epoch, train_loss, end - start))
-            else:
-                print("iter {} (epoch {}), avg_reward = {:.3f}, time/batch = {:.3f}" \
-                    .format(iteration, epoch, model_out['reward'].mean(), end - start))
+            if iteration%300==0:
+                if struc_flag:
+                    print("iter {} (epoch {}), train_loss = {:.3f}, lm_loss = {:.3f}, struc_loss = {:.3f}, time/batch = {:.3f}" \
+                        .format(iteration, epoch, train_loss, model_out['lm_loss'].mean().item(), model_out['struc_loss'].mean().item(), end - start))
+                elif not sc_flag:
+                    print("iter {} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
+                        .format(iteration, epoch, train_loss, end - start))
+                else:
+                    print("iter {} (epoch {}), avg_reward = {:.3f}, time/batch = {:.3f}" \
+                        .format(iteration, epoch, model_out['reward'].mean(), end - start))
 
             # Update the iteration and epoch
             iteration += 1
@@ -290,8 +291,10 @@ def train(opt):
 
                 if best_flag:
                     utils.save_checkpoint(opt, model, infos, optimizer, append='best')
-                    
-        with open('/home/simyura1/bigdata/ImageCaptioning.pytorch/time_list/base_train_time.txt', 'w') as output_file:
+           
+        
+        # 여기 경로 고치세유 ~~
+        with open('/home/download/notebooks/ImageCaptioning.pytorch/time_list/base_train_time.txt', 'w') as output_file:
             for i in epoch_time:
                 output_file.write(i + '\n')
 

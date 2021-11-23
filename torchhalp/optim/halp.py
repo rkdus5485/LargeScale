@@ -3,8 +3,7 @@ import torch
 from torch.autograd import Variable
 import copy, logging
 import math
-
-import torchhalp.quantize
+from captioning.utils.torchhalp import quantize
 
 class HALP(torch.optim.SGD):
     """Implements high-accuracy low-precision algorithm.

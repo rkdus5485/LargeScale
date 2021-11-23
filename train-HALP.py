@@ -7,6 +7,9 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 
+## 이거 import 해
+from captioning.utils.torchhalp.optim import SVRG, HALP
+
 import numpy as np
 
 import time
@@ -129,15 +132,17 @@ def train(opt):
     #########################
     '''Import the optimizer from torchhalp.optim import HALP
         Change the optimizer to optimizer = HALP(model.parameters(), lr=args.lr, T=T, data_loader=train_loader)'''
-    def closure(data=data, target=target):
-        data = Variable(data, requires_grad=False)
-        target = Variable(target, requires_grad=False)
-        if cuda:
-            data, target = data.cuda(), target.cuda()
-        output = model(data)
-        loss = loss_fn(output, target)
-        loss.backward()
-        return loss
+    print(len(loader.dataset))
+    for i, (_,data, target,_,_,_) in enumerate(loader.dataset):
+        def closure(data=data, target=target):
+            data = Variable(data, requires_grad=False)
+            target = Variable(target, requires_grad=False)
+            if cuda:
+                data, target = data.cuda(), target.cuda()
+            output = model(data)
+            loss = loss_fn(output, target)
+            loss.backward()
+            return loss
     
 
     # Start training
@@ -322,7 +327,7 @@ def train(opt):
            
         
         # 여기 경로 고치세유 ~~
-        with open('/home/rkdus5485/download/notebooks/ImageCaptioning.pytorch/time_list/HALP_train_time.txt', 'w') as output_file:
+        with open('/home/simyura1/bigdata/ImageCaptioning.pytorch/time_list/base_train_time.txt', 'w') as output_file:
             for i in epoch_time:
                 output_file.write(str(i) + '\n')
 

@@ -210,12 +210,24 @@ def train(opt):
                 else:
                     print("iter {} (epoch {}), avg_reward = {:.3f}, time/batch = {:.3f}" \
                         .format(iteration, epoch, model_out['reward'].mean(), end - start))
+            """if struc_flag:
+                print("iter {} (epoch {}), train_loss = {:.3f}, lm_loss = {:.3f}, struc_loss = {:.3f}, time/batch = {:.3f}" \
+                    .format(iteration, epoch, train_loss, model_out['lm_loss'].mean().item(), model_out['struc_loss'].mean().item(), end - start))
+            elif not sc_flag:
+                print("iter {} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
+                    .format(iteration, epoch, train_loss, end - start))
+            else:
+                print("iter {} (epoch {}), avg_reward = {:.3f}, time/batch = {:.3f}" \
+                    .format(iteration, epoch, model_out['reward'].mean(), end - start))"""
 
             # Update the iteration and epoch
             iteration += 1
+            #print('data : ',data)
             if data['bounds']['wrapped']:
                 epoch += 1
                 epoch_done = True
+                epoch_end_time = time.time() - epoch_start_time
+                epoch_time.append(epoch_end_time)
 
             # Write the training loss summary
             if (iteration % opt.losses_log_every == 0):
@@ -237,8 +249,8 @@ def train(opt):
                 histories['loss_history'][iteration] = train_loss if not sc_flag else model_out['reward'].mean()
                 histories['lr_history'][iteration] = opt.current_lr
                 histories['ss_prob_history'][iteration] = model.ss_prob
-            epoch_end_time = time.time() - epoch_start_time
-            epoch_time.append(epoch_end_time)
+            """epoch_end_time = time.time() - epoch_start_time
+            epoch_time.append(epoch_end_time)"""
             
             
 
@@ -294,9 +306,9 @@ def train(opt):
            
         
         # 여기 경로 고치세유 ~~
-        with open('/home/download/notebooks/ImageCaptioning.pytorch/time_list/base_train_time.txt', 'w') as output_file:
+        with open('/home/rkdus5485/download/notebooks/ImageCaptioning.pytorch/time_list/base_train_time.txt', 'w') as output_file:
             for i in epoch_time:
-                output_file.write(i + '\n')
+                output_file.write(str(i) + '\n')
 
     except (RuntimeError, KeyboardInterrupt):
         print('Save ckpt on exception ...')

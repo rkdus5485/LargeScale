@@ -1,5 +1,5 @@
 caption_model: transformer
-noamopt: False
+noamopt: False # True일까 False일까
 noamopt_warmup: 20000
 label_smoothing: 0.0
 input_json: data/cocotalk.json

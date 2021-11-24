@@ -3,6 +3,7 @@ import torch
 from torch.autograd import Variable
 import copy, logging
 import math
+
 from captioning.utils.torchhalp import quantize
 
 class HALP(torch.optim.SGD):
@@ -110,8 +111,20 @@ class HALP(torch.optim.SGD):
         self._zero_grad()
 
         # Accumulate gradients
-        for i, (data, target) in enumerate(self.data_loader):
-            closure(data, target)
+        # print(next(iter(self.data_loader.loaders)))
+        # fc_feats,att_feats,att_masks,labels,masks,gts,bounds,infos
+        # closure(fc_feats, att_feats, labels, masks, att_masks, gts, sc_flag, struc_flag, drop_worst_flag)
+        
+        data = self.data_loader.get_batch('train')
+        #torch.cuda.synchronize()
+
+        tmp = [data['fc_feats'], data['att_feats'], data['labels'], data['masks'], data['att_masks']]
+        tmp = [_ if _ is None else _.cuda() for _ in tmp]
+        fc_feats, att_feats, labels, masks, att_masks = tmp
+        gts = data['gts']
+        
+        # print('타입',closure.type) =>  <built-in method type of Tensor object at 0x7f859b9866d0>
+        closure(fc_feats, att_feats, labels, masks, att_masks, gts)
 
         # Adjust summed gradients by num_iterations accumulated over
         # Assumes loss size average argument is true

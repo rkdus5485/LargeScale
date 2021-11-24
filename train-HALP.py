@@ -9,6 +9,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 ## 이거 import 해
 from captioning.utils.torchhalp.optim import SVRG, HALP
+from torch.autograd import Variable
 
 import numpy as np
 
@@ -94,16 +95,7 @@ def train(opt):
     ##########################
     #  Build optimizer
     ##########################
-    if opt.noamopt:
-        assert opt.caption_model in ['transformer', 'bert', 'm2transformer'], 'noamopt can only work with transformer'
-        optimizer = utils.get_std_opt(model, optim_func=opt.optim, factor=opt.noamopt_factor, warmup=opt.noamopt_warmup)
-    elif opt.reduce_on_plateau:
-        optimizer = utils.build_optimizer(model.parameters(), opt)
-        optimizer = utils.ReduceLROnPlateau(optimizer,
-                                            factor=opt.reduce_on_plateau_factor,
-                                            patience=opt.reduce_on_plateau_patience)
-    else:
-        optimizer = utils.build_optimizer(model.parameters(), opt)
+    optimizer = HALP(model.parameters(), lr=opt.learning_rate, T=1, data_loader=loader)
     # Load the optimizer
     if opt.start_from is not None and os.path.isfile(os.path.join(opt.start_from,"optimizer.pth")):
         optimizer.load_state_dict(torch.load(os.path.join(opt.start_from, 'optimizer.pth')))
@@ -126,24 +118,6 @@ def train(opt):
     epoch_done = True
     # Assure in training mode
     dp_lw_model.train()
-    
-    #########################
-    # Get ready to HALP (이거 넣으랭)
-    #########################
-    '''Import the optimizer from torchhalp.optim import HALP
-        Change the optimizer to optimizer = HALP(model.parameters(), lr=args.lr, T=T, data_loader=train_loader)'''
-    print(len(loader.dataset))
-    for i, (_,data, target,_,_,_) in enumerate(loader.dataset):
-        def closure(data=data, target=target):
-            data = Variable(data, requires_grad=False)
-            target = Variable(target, requires_grad=False)
-            if cuda:
-                data, target = data.cuda(), target.cuda()
-            output = model(data)
-            loss = loss_fn(output, target)
-            loss.backward()
-            return loss
-    
 
     # Start training
     try:
@@ -169,8 +143,7 @@ def train(opt):
                     frac = (epoch - opt.scheduled_sampling_start) // opt.scheduled_sampling_increase_every
                     opt.ss_prob = min(opt.scheduled_sampling_increase_prob  * frac, opt.scheduled_sampling_max_prob)
                     model.ss_prob = opt.ss_prob
-
-                # If start self critical training
+                    
                 if opt.self_critical_after != -1 and epoch >= opt.self_critical_after:
                     sc_flag = True
                     init_scorer(opt.cached_tokens)
@@ -204,9 +177,30 @@ def train(opt):
             tmp = [data['fc_feats'], data['att_feats'], data['labels'], data['masks'], data['att_masks']]
             tmp = [_ if _ is None else _.cuda() for _ in tmp]
             fc_feats, att_feats, labels, masks, att_masks = tmp
+            gts = data['gts']
+            # print(next(iter(loader.loaders['train']))) -> fc_feats,att_feats,att_masks,labels,masks,gts,bounds,infos
+            
+            ################################################
+            # closure
+            ################################################
+            def closure(fc_feats=fc_feats, att_feats=att_feats, labels=labels, masks=masks, att_masks=att_masks, gts=gts):
+                fc_feats = Variable(fc_feats, requires_grad=False)
+                att_feats = Variable(att_feats, requires_grad=False)
+                labels = Variable(labels, requires_grad=False)
+                masks = Variable(masks, requires_grad=False)
+                att_masks = Variable(att_masks, requires_grad=False)
+                cuda = torch.cuda.is_available()
+                if cuda:
+                    fc_feats, att_feats, labels, masks, att_masks = fc_feats.cuda(), att_feats.cuda(), labels.cuda(), masks.cuda(), att_masks.cuda()
+                output = dp_lw_model(fc_feats, att_feats, labels, masks, att_masks, data['gts'], torch.arange(0, len(data['gts'])), 0, 0, 0)
+                loss = output['loss'].mean()
+                loss.backward()
+                return loss
             
             optimizer.zero_grad()
-            model_out = dp_lw_model(fc_feats, att_feats, labels, masks, att_masks, data['gts'], torch.arange(0, len(data['gts'])), sc_flag, struc_flag, drop_worst_flag)
+            
+            
+            '''model_out = dp_lw_model(fc_feats, att_feats, labels, masks, att_masks, data['gts'], torch.arange(0, len(data['gts'])), sc_flag, struc_flag, drop_worst_flag)
 
             if not drop_worst_flag:
                 loss = model_out['loss'].mean()
@@ -214,14 +208,19 @@ def train(opt):
                 loss = model_out['loss']
                 loss = torch.topk(loss, k=int(loss.shape[0] * (1-opt.drop_worst_rate)), largest=False)[0].mean()
 
-            loss.backward()
+            loss.backward()'''
+            
+            
             if opt.grad_clip_value != 0:
                 getattr(torch.nn.utils, 'clip_grad_%s_' %(opt.grad_clip_mode))(model.parameters(), opt.grad_clip_value)
-            optimizer.step()
-            train_loss = loss.item()
+                # print('drop_worst_flag',drop_worst_flag)
+            optimizer.step(closure)
+            train_loss = closure().item()
             torch.cuda.synchronize()
             end = time.time()
-            if iteration%300==0:
+            
+            
+            '''if iteration%300==0:
                 if struc_flag:
                     print("iter {} (epoch {}), train_loss = {:.3f}, lm_loss = {:.3f}, struc_loss = {:.3f}, time/batch = {:.3f}" \
                         .format(iteration, epoch, train_loss, model_out['lm_loss'].mean().item(), model_out['struc_loss'].mean().item(), end - start))
@@ -230,8 +229,10 @@ def train(opt):
                         .format(iteration, epoch, train_loss, end - start))
                 else:
                     print("iter {} (epoch {}), avg_reward = {:.3f}, time/batch = {:.3f}" \
-                        .format(iteration, epoch, model_out['reward'].mean(), end - start))
-            """if struc_flag:
+                        .format(iteration, epoch, model_out['reward'].mean(), end - start))'''
+            
+            
+            if struc_flag:
                 print("iter {} (epoch {}), train_loss = {:.3f}, lm_loss = {:.3f}, struc_loss = {:.3f}, time/batch = {:.3f}" \
                     .format(iteration, epoch, train_loss, model_out['lm_loss'].mean().item(), model_out['struc_loss'].mean().item(), end - start))
             elif not sc_flag:
@@ -239,7 +240,7 @@ def train(opt):
                     .format(iteration, epoch, train_loss, end - start))
             else:
                 print("iter {} (epoch {}), avg_reward = {:.3f}, time/batch = {:.3f}" \
-                    .format(iteration, epoch, model_out['reward'].mean(), end - start))"""
+                    .format(iteration, epoch, model_out['reward'].mean(), end - start))
 
             # Update the iteration and epoch
             iteration += 1

@@ -1,14 +1,14 @@
 caption_model: transformer
-noamopt: False # True일까 False일까
+noamopt: true
 noamopt_warmup: 20000
 label_smoothing: 0.0
-input_json: data/cocotalk.json
-input_label_h5: data/cocotalk_label.h5
-input_att_dir: data/cocobu_att
+input_json: data/f8ktalk.json
+input_label_h5: data/f8ktalk_label.h5
+input_att_dir: data/f8ktalk_att
+input_fc_dir: data/f8ktalk_fc
 seq_per_img: 5
-batch_size: 50
+batch_size: 10
 learning_rate: 0.0005
-optim : HALP
 
 # Notice: because I'm to lazy, I reuse the option name for RNNs to set the hyperparameters for transformer:
 # N=num_layers

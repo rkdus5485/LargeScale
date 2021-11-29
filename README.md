@@ -11,6 +11,7 @@
 
 ## 20211129
 - captioning/utils/eval_utils.py
+- captioning/utils/data/dataloader.py
 - coco-caption/pycocoevalcap/eval.py
 - configs/transformer/transformer_flickr8k_HALP.yml
 - configs/transformer/transformer_flickr8k.yml

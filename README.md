@@ -14,3 +14,4 @@
 - coco-caption/pycocoevalcap/eval.py
 - configs/transformer/transformer_flickr8k_HALP.yml
 - configs/transformer/transformer_flickr8k.yml
+- scripts/prepro_feats.py

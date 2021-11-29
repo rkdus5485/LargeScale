@@ -41,6 +41,8 @@ def getCOCO(dataset):
         annFile = 'coco-caption/annotations/captions_val2014.json'
     elif 'flickr30k' in dataset or 'f30k' in dataset:
         annFile = 'data/f30k_captions4eval.json'
+    elif 'flickr8k' in dataset or 'f8k' in dataset:
+        annFile = 'data/f8k_captions4eval.json'
     return COCO(annFile)
 
 

@@ -66,12 +66,19 @@ class HybridLoader:
             # compressed bytes to save memory
             f_input = self.features[key]
         elif self.db_type == 'lmdb':
+            print('lmdb')
             f_input = self.lmdb[key]
         elif self.db_type == 'pth':
+            print('pth')
             f_input = self.feat_file[key]
         elif self.db_type == 'h5':
+            print('h5')
             f_input = h5py.File(self.db_path, 'r')[key]
         else:
+            #print(os.path.join(self.db_path, key + self.ext))
+            #print(self.db_path)
+            #print(key)
+            #print(self.ext)
             f_input = open(os.path.join(self.db_path, key + self.ext), 'rb').read()
 
         if self.in_memory and key not in self.features:
@@ -266,7 +273,8 @@ class Dataset(data.Dataset):
         ix, it_pos_now, wrapped = index #self.split_ix[index]
         #print(ix, it_pos_now, wrapped)
         if self.use_att:
-            att_feat = self.att_loader.get(str(self.info['images'][ix]['id']))
+            #print('str : ',str(self.info['images'][ix]['file_path'][:-4]))
+            att_feat = self.att_loader.get(str(self.info['images'][ix]['file_path'][:-4]))
             # Reshape to K x C
             att_feat = att_feat.reshape(-1, att_feat.shape[-1])
             if self.norm_att_feat:

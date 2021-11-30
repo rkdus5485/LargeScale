@@ -6,20 +6,23 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
-
+from torch.multiprocessing import Process
 ## 이거 import 해
+import captioning.utils.opts as opts
+#import captioning.utils.torchhalp.optim.svrg as SVRG
+#import captioning.utils.torchhalp.optim.halp as HALP
 from captioning.utils.torchhalp.optim import SVRG, HALP
 from torch.autograd import Variable
-
+import torch.distributed as dist
 import numpy as np
-
+import torch.multiprocessing as mp
 import time
 import os
 from six.moves import cPickle
 import traceback
 from collections import defaultdict
 
-import captioning.utils.opts as opts
+
 import captioning.models as models
 from captioning.data.dataloader import *
 import skimage.io
@@ -28,7 +31,47 @@ import captioning.utils.misc as utils
 from captioning.utils.rewards import init_scorer, get_self_critical_reward
 from captioning.modules.loss_wrapper import LossWrapper
 
-
+def init_processes(rank, wordsize, train, opt):
+    """ Initialize the distributed environment. """
+    """#도영
+    #os.environ['MASTER_ADDR'] = '34.64.214.227'
+    #가연
+    os.environ['MASTER_ADDR'] = '34.64.150.44'
+    #os.environ['MASTER_ADDR'] = '34.64.150.44'
+    os.environ['MASTER_PORT'] = '44444'
+    os.environ['WORLD_SIZE'] = "3"
+    os.environ['RANK'] = '0'
+    #os.environ['CUDA_VISIBLE_DEVICES']='0,1,2'"""
+    
+    os.environ['MASTER_ADDR'] = '192.168.0.34'
+    os.environ['MASTER_PORT'] = '20211'
+    os.environ['CUDA_VISIBLE_DEVICES']='0,1'
+    
+    
+    #print("before init_process_group")
+    
+    dist.init_process_group(backend="gloo",rank=rank, world_size=wordsize)
+    
+    #print("after init_process_group")
+    train(opt)
+    
+def average_gradients(model):
+    """ Gradient averaging."""
+    size = float(dist.get_world_size())
+    #print('average size : ', size)
+    for param in model.parameters():
+        #group = dist.new_group(ranks=None)
+        #print('average 한당 !!!!!!!!!!!')
+        #print('데이터 : ',param.grad.data)
+        
+        #dist.reduce(torch.tensor([1]).to('cuda'),dst=0,op=dist.ReduceOp.SUM)
+        dist.reduce(param.grad.data, dst=0, op=dist.ReduceOp.SUM)
+        #print('안뇽')
+        #dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
+        dist.broadcast(param.grad.data, src=0)
+        #print('햇당 ~!')
+        param.grad.data /= size
+        #print('average 했다 !!!!!!')
 def add_summary_value(writer, key, value, iteration):
     if writer:
         writer.add_scalar(key, value, iteration)
@@ -88,10 +131,10 @@ def train(opt):
     # This allows loss function computed separately on each machine
     lw_model = LossWrapper(model, opt)
     # Wrap with dataparallel
-    dp_model = torch.nn.DataParallel(model)
-    dp_model.vocab = getattr(model, 'vocab', None)  # nasty
-    dp_lw_model = torch.nn.DataParallel(lw_model)
-
+    #dp_model = torch.nn.DataParallel(model)
+    #dp_model.vocab = getattr(model, 'vocab', None)  # nasty
+    #dp_lw_model = torch.nn.DataParallel(lw_model)
+    #dp_lw_model = torch.nn.DataParallel(lw_model, output_device=0)
     ##########################
     #  Build optimizer
     ##########################
@@ -117,10 +160,14 @@ def train(opt):
     # Always set to True at the beginning to initialize the lr or etc.
     epoch_done = True
     # Assure in training mode
-    dp_lw_model.train()
+    lw_model.train()
+    #dp_lw_model.train()
 
     # Start training
     try:
+        epoch_list = []
+        s = time.time()
+        epoch_list.append(s)
         while True:
             epoch_start_time = time.time()
             # Stop if reaching max epochs
@@ -188,11 +235,12 @@ def train(opt):
                 att_feats = Variable(att_feats, requires_grad=False)
                 labels = Variable(labels, requires_grad=False)
                 masks = Variable(masks, requires_grad=False)
-                att_masks = Variable(att_masks, requires_grad=False)
+                #att_masks = Variable(att_masks, requires_grad=False)
                 cuda = torch.cuda.is_available()
                 if cuda:
-                    fc_feats, att_feats, labels, masks, att_masks = fc_feats.cuda(), att_feats.cuda(), labels.cuda(), masks.cuda(), att_masks.cuda()
-                output = dp_lw_model(fc_feats, att_feats, labels, masks, att_masks, data['gts'], torch.arange(0, len(data['gts'])), 0, 0, 0)
+                    fc_feats, att_feats, labels, masks = fc_feats.cuda(), att_feats.cuda(), labels.cuda(), masks.cuda()
+                #output = dp_lw_model(fc_feats, att_feats, labels, masks, att_masks, data['gts'], torch.arange(0, len(data['gts'])), 0, 0, 0)
+                output = lw_model(fc_feats, att_feats, labels, masks, att_masks, data['gts'], torch.arange(0, len(data['gts'])), 0, 0, 0)
                 loss = output['loss'].mean()
                 loss.backward()
                 return loss
@@ -201,13 +249,11 @@ def train(opt):
             
             
             '''model_out = dp_lw_model(fc_feats, att_feats, labels, masks, att_masks, data['gts'], torch.arange(0, len(data['gts'])), sc_flag, struc_flag, drop_worst_flag)
-
             if not drop_worst_flag:
                 loss = model_out['loss'].mean()
             else:
                 loss = model_out['loss']
                 loss = torch.topk(loss, k=int(loss.shape[0] * (1-opt.drop_worst_rate)), largest=False)[0].mean()
-
             loss.backward()'''
             
             
@@ -220,7 +266,7 @@ def train(opt):
             end = time.time()
             
             
-            '''if iteration%300==0:
+            """if iteration%300==0:
                 if struc_flag:
                     print("iter {} (epoch {}), train_loss = {:.3f}, lm_loss = {:.3f}, struc_loss = {:.3f}, time/batch = {:.3f}" \
                         .format(iteration, epoch, train_loss, model_out['lm_loss'].mean().item(), model_out['struc_loss'].mean().item(), end - start))
@@ -229,7 +275,7 @@ def train(opt):
                         .format(iteration, epoch, train_loss, end - start))
                 else:
                     print("iter {} (epoch {}), avg_reward = {:.3f}, time/batch = {:.3f}" \
-                        .format(iteration, epoch, model_out['reward'].mean(), end - start))'''
+                        .format(iteration, epoch, model_out['reward'].mean(), end - start))"""
             
             
             if struc_flag:
@@ -248,8 +294,10 @@ def train(opt):
             if data['bounds']['wrapped']:
                 epoch += 1
                 epoch_done = True
-                epoch_end_time = time.time() - epoch_start_time
-                epoch_time.append(epoch_end_time)
+                e = time.time()
+                epoch_list.append(e)
+                print('epoch per time(end_time) : ', epoch_list[epoch]-epoch_list[epoch-1]) 
+                epoch_time.append(epoch_list[epoch]-epoch_list[epoch-1])
 
             # Write the training loss summary
             if (iteration % opt.losses_log_every == 0):
@@ -328,7 +376,10 @@ def train(opt):
            
         
         # 여기 경로 고치세유 ~~
-        with open('/home/simyura1/bigdata/ImageCaptioning.pytorch/time_list/base_train_time.txt', 'w') as output_file:
+        """with open('/home/rkdus5485/BERT/Bigdata/ImageCaptioning.pytorch/time_list/halp_train_time.txt', 'w') as output_file:
+            for i in epoch_time:
+                output_file.write(str(i) + '\n')"""
+        with open(os.path.join(opt.checkpoint_path,'base_train_time.txt'), 'w') as output_file:
             for i in epoch_time:
                 output_file.write(str(i) + '\n')
 
@@ -344,3 +395,21 @@ def train(opt):
 
 opt = opts.parse_opt()
 train(opt)
+"""if __name__ == "__main__":
+    #size = 1
+    #print('시작')
+    
+    world_size=2
+    processes=[]
+    size=2
+    for rank in range(size):
+        if rank==0:
+            opt.input_json='data/f8ktalk_1.json'
+        else:
+            opt.input_json='data/f8ktalk_2.json'
+        p = mp.Process(target=init_processes, args=(rank, world_size, train, opt))
+        p.start()
+        processes.append(p)
+
+    for p in processes:
+        p.join()"""
